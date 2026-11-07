@@ -25,6 +25,8 @@ def test_generate_runs_complete_pipeline(client, payload):
         "reviewer",
     ]
     assert response.headers["X-Request-ID"] == body["metadata"]["request_id"]
+    assert body["metadata"]["ai_provider"] == "deterministic"
+    assert body["metadata"]["fallback_used"] is False
 
 
 def test_invalid_input_returns_safe_error(client, payload):

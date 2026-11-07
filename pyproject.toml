@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "enterprise-ai-resume-agent"
-version = "1.0.0"
+version = "1.1.0"
 description = "A secure, observable, multi-agent resume generation API."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Capstone Project Team" }]
 dependencies = [
   "fastapi>=0.115,<1.0",
+  "httpx>=0.28,<1.0",
   "prometheus-client>=0.21,<1.0",
   "pydantic-settings>=2.7,<3.0",
   "structlog>=24.4,<26.0",
@@ -20,7 +21,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "httpx>=0.28,<1.0",
   "mypy>=1.14,<2.0",
   "pytest>=8.3,<9.0",
   "pytest-asyncio>=0.25,<1.0",

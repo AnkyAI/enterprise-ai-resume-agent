@@ -12,6 +12,7 @@
 | Container escape | Non-root user, dropped capabilities, read-only filesystem | Scan and sign production images |
 | Supply-chain risk | CI checks and Dependabot | Add hash-locked dependencies and an SBOM before release |
 | Prompt injection | Offline deterministic agents by default | LLM adapters must treat job descriptions as untrusted data |
+| Model hallucination | Ollama prompt forbids invention; output is schema-validated; reviewer runs afterward | Human review remains required before resume use |
 
 ## Production checklist
 

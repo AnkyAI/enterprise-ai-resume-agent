@@ -15,12 +15,24 @@ from resume_agent.logging import configure_logging
 from resume_agent.metrics import REQUEST_COUNT, REQUEST_LATENCY
 from resume_agent.models import ErrorResponse, HealthResponse, ResumeRequest, ResumeResponse
 from resume_agent.orchestrator import ResumeOrchestrator
+from resume_agent.providers import OllamaProvider
 from resume_agent.security import InMemoryRateLimiter, rate_limit_dependency
 
 settings = get_settings()
 configure_logging(settings.log_level)
 logger = structlog.get_logger()
-orchestrator = ResumeOrchestrator()
+provider = (
+    OllamaProvider(
+        base_url=settings.ollama_base_url,
+        model=settings.ollama_model,
+        timeout_seconds=settings.ollama_timeout_seconds,
+    )
+    if settings.ai_provider == "ollama"
+    else None
+)
+orchestrator = ResumeOrchestrator(
+    provider=provider, allow_fallback=settings.allow_deterministic_fallback
+)
 limiter = InMemoryRateLimiter(settings.rate_limit_requests, settings.rate_limit_window_seconds)
 enforce_rate_limit = rate_limit_dependency(limiter)
 

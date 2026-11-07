@@ -5,7 +5,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A secure, observable, production-style multi-agent workflow that analyzes a candidate profile, evaluates ATS alignment, writes structured resume content, and performs a final quality review. It runs locally without paid APIs and exposes clean extension points for an enterprise LLM provider.
+A secure, observable, production-style multi-agent workflow that analyzes a candidate profile, evaluates ATS alignment, writes structured resume content, and performs a final quality review. It supports a free local Ollama LLM with a deterministic offline fallback, so no paid API is required.
 
 ## Why this is more than a chatbot
 
@@ -15,6 +15,7 @@ A secure, observable, production-style multi-agent workflow that analyzes a cand
 - Safe error envelopes, payload limits, and security headers
 - Structured JSON logs, request correlation, and Prometheus metrics
 - Reproducible tests, container hardening, CI, and deployment readiness
+- Optional schema-constrained Ollama generation with explicit fallback reporting
 
 ## Architecture
 
@@ -58,6 +59,28 @@ curl --fail-with-body \
 
 Every success response contains `profile_analysis`, `ats_analysis`, `resume`, `review`, and pipeline `metadata`. Use the returned `request_id` to correlate client activity with server logs.
 
+## Free local AI with Ollama
+
+The default deterministic provider keeps setup and CI lightweight. To generate resume content with a real local LLM, install [Ollama](https://ollama.com/), then run:
+
+```bash
+ollama pull llama3.2:3b
+ollama serve
+```
+
+Set these values in `.env` and restart the API:
+
+```dotenv
+RESUME_AI_PROVIDER=ollama
+RESUME_OLLAMA_MODEL=llama3.2:3b
+RESUME_OLLAMA_BASE_URL=http://127.0.0.1:11434
+RESUME_ALLOW_DETERMINISTIC_FALLBACK=true
+```
+
+Ollama receives the complete writing context and a JSON Schema generated from `ResumeContent`. Its output is validated again before entering the reviewer agent. If Ollama is unavailable or produces invalid output, the service uses the deterministic writer when fallback is enabled and reports `fallback_used: true` in response metadata.
+
+When the API runs inside Docker Desktop and Ollama runs on the host, set `RESUME_OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+
 ## API endpoints
 
 | Method | Path | Authentication | Purpose |
@@ -94,7 +117,8 @@ src/resume_agent/
 ├── api.py           # Routes, middleware, errors, operations endpoints
 ├── config.py        # Validated environment configuration
 ├── models.py        # Strict public and internal schemas
-├── orchestrator.py  # Pipeline sequencing and telemetry
+├── orchestrator.py  # Pipeline sequencing, provider fallback, telemetry
+├── providers/       # Free local Ollama provider boundary
 └── security.py      # Authentication and rate limiting
 tests/               # API, security, and agent behavior tests
 docs/                # Architecture and threat model
@@ -103,7 +127,7 @@ examples/            # Ready-to-run request payload
 
 ## Production evolution
 
-The included agents are deterministic by design: demos and CI are fast, reproducible, private, and free. To add an LLM, implement the generic `Agent` contract and keep the validated output models. Provider adapters should enforce timeouts, retry budgets, JSON-schema output, tenant isolation, model allowlists, and zero-retention agreements.
+The deterministic provider keeps demos and CI fast, reproducible, private, and free. The Ollama adapter adds real local LLM generation with timeouts and JSON Schema output. Additional providers can implement the same `ResumeGenerationProvider` contract while retaining the validated domain models.
 
 Before a multi-instance deployment, replace the in-memory rate limiter with Redis or API-gateway enforcement and replace shared API keys with OAuth2/OIDC.
 

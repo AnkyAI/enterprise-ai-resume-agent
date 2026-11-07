@@ -14,6 +14,7 @@ from resume_agent.agents.resume_writer import WriterInput
 from resume_agent.agents.reviewer import ReviewerInput
 from resume_agent.metrics import AGENT_RUNS, PIPELINE_LATENCY
 from resume_agent.models import PipelineMetadata, ResumeRequest, ResumeResponse
+from resume_agent.providers.base import ResumeGenerationProvider
 
 logger = structlog.get_logger()
 
@@ -23,11 +24,17 @@ class ResumeOrchestrator:
 
     pipeline_version = "1.0.0"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        provider: ResumeGenerationProvider | None = None,
+        allow_fallback: bool = True,
+    ) -> None:
         self.profile_agent = ProfileAnalyzerAgent()
         self.ats_agent = ATSOptimizerAgent()
         self.writer_agent = ResumeWriterAgent()
         self.reviewer_agent = ReviewerAgent()
+        self.provider = provider
+        self.allow_fallback = allow_fallback
 
     async def _run_agent(self, name: str, operation: Callable[[], Awaitable[object]]) -> object:
         started = time.perf_counter()
@@ -52,10 +59,34 @@ class ResumeOrchestrator:
             self.profile_agent.name, lambda: self.profile_agent.run(request.profile)
         )
         ats = await self._run_agent(self.ats_agent.name, lambda: self.ats_agent.run(request))
-        resume = await self._run_agent(
-            self.writer_agent.name,
-            lambda: self.writer_agent.run(WriterInput(request, profile, ats)),  # type: ignore[arg-type]
-        )
+        fallback_used = False
+        provider_name = self.provider.name if self.provider else "deterministic"
+        if self.provider:
+            active_provider = self.provider
+            try:
+                resume = await self._run_agent(
+                    self.writer_agent.name,
+                    lambda: active_provider.generate(request, profile, ats),  # type: ignore[arg-type]
+                )
+            except Exception:
+                if not self.allow_fallback:
+                    raise
+                fallback_used = True
+                provider_name = "deterministic"
+                await logger.awarning(
+                    "provider_fallback",
+                    requested_provider=active_provider.name,
+                    request_id=request_id,
+                )
+                resume = await self._run_agent(
+                    self.writer_agent.name,
+                    lambda: self.writer_agent.run(WriterInput(request, profile, ats)),  # type: ignore[arg-type]
+                )
+        else:
+            resume = await self._run_agent(
+                self.writer_agent.name,
+                lambda: self.writer_agent.run(WriterInput(request, profile, ats)),  # type: ignore[arg-type]
+            )
         review = await self._run_agent(
             self.reviewer_agent.name,
             lambda: self.reviewer_agent.run(ReviewerInput(resume, ats)),  # type: ignore[arg-type]
@@ -72,5 +103,7 @@ class ResumeOrchestrator:
                 pipeline_version=self.pipeline_version,
                 agents_executed=["profile_analyzer", "ats_optimizer", "resume_writer", "reviewer"],
                 processing_time_ms=round(elapsed * 1000, 2),
+                ai_provider=provider_name,
+                fallback_used=fallback_used,
             ),
         )

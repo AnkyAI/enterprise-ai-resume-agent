@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=60, ge=1, le=10_000)
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
     max_request_bytes: int = Field(default=100_000, ge=1_000, le=1_000_000)
+    ai_provider: Literal["deterministic", "ollama"] = "deterministic"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = Field(default="llama3.2:3b", min_length=1, max_length=120)
+    ollama_timeout_seconds: float = Field(default=90, ge=1, le=600)
+    allow_deterministic_fallback: bool = True
 
     @field_validator("api_keys", mode="before")
     @classmethod

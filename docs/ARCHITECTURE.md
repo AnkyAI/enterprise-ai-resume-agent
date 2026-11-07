@@ -11,6 +11,7 @@ flowchart TD
     ORCH --> A[ATS Optimization Agent]
     P --> W[Resume Writer Agent]
     A --> W
+    W -->|optional| OLLAMA[Local Ollama LLM]
     W --> R[Reviewer Agent]
     R --> JSON[Typed JSON Response]
     API -.-> LOG[Structured JSON Logs]
@@ -34,7 +35,7 @@ The local in-memory limiter is isolated behind one class. A multi-replica deploy
 
 ## AI provider boundary
 
-The reference implementation is deterministic and offline so builds are reproducible and candidate data is not sent to a third party. Production teams can implement LLM-backed agents behind the same `Agent` interface. Provider adapters should add timeouts, retry budgets, model allowlists, output-schema validation, data-processing agreements, and prompt-injection defenses.
+The reference implementation defaults to a deterministic offline writer so builds are reproducible and candidate data is not sent to a third party. An opt-in Ollama adapter performs real local LLM generation using the `ResumeContent` JSON Schema, validates the response, and records the actual provider and fallback state in response metadata. Additional providers can implement `ResumeGenerationProvider`; hosted adapters should add retry budgets, model allowlists, tenant isolation, and data-processing agreements.
 
 ## Failure behavior
 

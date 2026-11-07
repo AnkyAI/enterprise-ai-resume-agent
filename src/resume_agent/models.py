@@ -117,6 +117,8 @@ class PipelineMetadata(StrictModel):
     pipeline_version: str
     agents_executed: list[str]
     processing_time_ms: float
+    ai_provider: str
+    fallback_used: bool
 
 
 class ResumeResponse(StrictModel):
