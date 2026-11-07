@@ -1,41 +1,62 @@
-# Enterprise AI Resume Generator Agent
+# Enterprise AI Resume Generator
 
 [![CI](https://github.com/AnkyAI/enterprise-ai-resume-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/AnkyAI/enterprise-ai-resume-agent/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-white?logo=ollama&logoColor=black)](https://ollama.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A secure, observable, production-style multi-agent workflow that analyzes a candidate profile, evaluates ATS alignment, writes structured resume content, and performs a final quality review. It supports a free local Ollama LLM with a deterministic offline fallback, so no paid API is required.
+Enterprise AI Resume Generator is a secure, observable application programming interface (API) for producing structured, applicant tracking system (ATS) aligned resume content. Four specialized agents analyze the candidate, measure job alignment, write the resume, and review the result. A free local Ollama model handles generation, while a deterministic writer keeps the service available without a model.
 
-## Why this is more than a chatbot
+## Project status
 
-- Four agents with isolated, typed responsibilities
-- FastAPI service with strict request and response contracts
-- Constant-time API-key authentication and configurable rate limits
-- Safe error envelopes, payload limits, and security headers
-- Structured JSON logs, request correlation, and Prometheus metrics
-- Reproducible tests, container hardening, CI, and deployment readiness
-- Optional schema-constrained Ollama generation with explicit fallback reporting
+The current package version is `1.1.0`. The main branch passes linting, strict type checks, automated tests, coverage enforcement, and a production container build.
 
-## Architecture
+| Capability | Implementation |
+|---|---|
+| API framework | FastAPI with versioned routes and OpenAPI documentation |
+| AI provider | Local Ollama with JSON Schema constrained output |
+| Offline mode | Deterministic resume writer with no model dependency |
+| Security | API keys, rate limits, body limits, strict validation, safe errors |
+| Observability | JSON logs, request IDs, agent metrics, Prometheus endpoint |
+| Delivery | Multi-stage Docker image, hardened Compose service, GitHub Actions |
+| Quality | Ruff, strict MyPy, pytest, and 80% minimum coverage |
+
+## How the pipeline works
+
+Each request passes through a typed workflow. The orchestrator records every agent execution and returns one validated response.
 
 ```mermaid
 flowchart LR
-    U[Client] --> F[FastAPI]
-    F --> S[Auth + Rate Limit]
-    S --> O[Orchestrator]
-    O --> P[Profile Analyzer]
-    O --> A[ATS Optimizer]
-    P --> W[Resume Writer]
-    A --> W
-    W --> R[Reviewer]
-    R --> J[Structured JSON]
-    F -.-> M[Logs + Metrics]
+    Client[API client] --> API[FastAPI endpoint]
+    API --> Guard[Authentication and rate limit]
+    Guard --> Orchestrator[Resume orchestrator]
+    Orchestrator --> Profile[Profile analyzer]
+    Orchestrator --> ATS[ATS optimizer]
+    Profile --> Writer[Resume writer]
+    ATS --> Writer
+    Writer --> Ollama[Local Ollama model]
+    Ollama -. invalid or unavailable .-> Fallback[Deterministic fallback]
+    Ollama --> Reviewer[Reviewer]
+    Fallback --> Reviewer
+    Reviewer --> Response[Structured JSON response]
+    API -. telemetry .-> Ops[Logs and Prometheus metrics]
 ```
 
-See [Architecture](docs/ARCHITECTURE.md) and [Security](docs/SECURITY.md) for design decisions, threat controls, and the production scaling path.
+The agents have separate responsibilities:
 
-## Quick start
+1. **Profile analyzer**: calculates experience, seniority, domain, and strengths
+2. **ATS optimizer**: extracts role keywords, identifies gaps, and calculates alignment
+3. **Resume writer**: generates summaries, bullets, skills, projects, and education
+4. **Reviewer**: checks structure, consistency, professionalism, and ATS alignment
+
+Read the [architecture guide](docs/ARCHITECTURE.md) for sequencing, scaling, and failure behavior. Read the [security guide](docs/SECURITY.md) for the threat model and production checklist.
+
+## Run the API locally
+
+You need Python 3.11 or newer. Ollama is optional because the deterministic provider works without it.
+
+Create the environment and start the service:
 
 ```bash
 python3.12 -m venv .venv
@@ -45,9 +66,9 @@ cp .env.example .env
 uvicorn resume_agent.api:app --reload
 ```
 
-The API is available at `http://localhost:8000`; interactive documentation is at `/docs` outside production.
+The API starts at `http://localhost:8000`. FastAPI serves interactive OpenAPI documentation at `http://localhost:8000/docs` in development.
 
-Generate a resume:
+Send the included sample profile:
 
 ```bash
 curl --fail-with-body \
@@ -57,18 +78,40 @@ curl --fail-with-body \
   http://localhost:8000/v1/resumes/generate
 ```
 
-Every success response contains `profile_analysis`, `ats_analysis`, `resume`, `review`, and pipeline `metadata`. Use the returned `request_id` to correlate client activity with server logs.
+An abbreviated response identifies the provider used and whether generation required the fallback:
 
-## Free local AI with Ollama
+```json
+{
+  "profile_analysis": {
+    "candidate_level": "Mid-Level",
+    "primary_domain": "Data Analytics Engineer",
+    "years_experience": 3
+  },
+  "ats_analysis": {
+    "ats_score": 68,
+    "missing_keywords": ["stakeholder"]
+  },
+  "review": {
+    "approved": true,
+    "quality_score": 100
+  },
+  "metadata": {
+    "ai_provider": "deterministic",
+    "fallback_used": false
+  }
+}
+```
 
-The default deterministic provider keeps setup and CI lightweight. To generate resume content with a real local LLM, install [Ollama](https://ollama.com/), then run:
+## Enable free local AI generation
+
+[Ollama](https://ollama.com/) runs open models on your machine without a paid API key. Install Ollama, download a model, and start its local service:
 
 ```bash
 ollama pull llama3.2:3b
 ollama serve
 ```
 
-Set these values in `.env` and restart the API:
+Configure the API through `.env`:
 
 ```dotenv
 RESUME_AI_PROVIDER=ollama
@@ -77,65 +120,106 @@ RESUME_OLLAMA_BASE_URL=http://127.0.0.1:11434
 RESUME_ALLOW_DETERMINISTIC_FALLBACK=true
 ```
 
-Ollama receives the complete writing context and a JSON Schema generated from `ResumeContent`. Its output is validated again before entering the reviewer agent. If Ollama is unavailable or produces invalid output, the service uses the deterministic writer when fallback is enabled and reports `fallback_used: true` in response metadata.
+The writer sends Ollama a JSON Schema generated from `ResumeContent`. The service validates the model output before the reviewer receives it. If the model is unavailable or returns invalid data, the deterministic writer runs and sets `fallback_used` to `true`.
 
-When the API runs inside Docker Desktop and Ollama runs on the host, set `RESUME_OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+For Docker Desktop with Ollama on the host, set `RESUME_OLLAMA_BASE_URL` to `http://host.docker.internal:11434`.
 
-## API endpoints
+## API reference
+
+The public operations endpoints support health checks and metrics. Resume generation requires the `X-API-Key` header.
 
 | Method | Path | Authentication | Purpose |
 |---|---|---:|---|
-| `POST` | `/v1/resumes/generate` | Required | Execute the four-agent pipeline |
-| `GET` | `/health` | Public | Liveness check |
-| `GET` | `/ready` | Public | Readiness check |
-| `GET` | `/metrics` | Public* | Prometheus metrics |
+| `POST` | `/v1/resumes/generate` | Required | Execute the four-agent workflow |
+| `GET` | `/health` | Public | Report process liveness |
+| `GET` | `/ready` | Public | Report service readiness |
+| `GET` | `/metrics` | Public | Export Prometheus metrics |
 
-*Restrict `/metrics` to the internal network at the production ingress.
+Restrict `/metrics` to your internal network at the production ingress.
 
-## Docker
+## Configuration reference
+
+All runtime settings use the `RESUME_` prefix. Start from `.env.example` and replace the development key before deployment.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RESUME_API_KEYS` | `dev-secret-key` | Comma-separated API keys |
+| `RESUME_ENVIRONMENT` | `development` | Runtime environment and documentation policy |
+| `RESUME_AI_PROVIDER` | `deterministic` | Select `deterministic` or `ollama` |
+| `RESUME_OLLAMA_MODEL` | `llama3.2:3b` | Local generation model |
+| `RESUME_OLLAMA_TIMEOUT_SECONDS` | `90` | Maximum model request duration |
+| `RESUME_ALLOW_DETERMINISTIC_FALLBACK` | `true` | Preserve availability after model failure |
+| `RESUME_RATE_LIMIT_REQUESTS` | `60` | Requests allowed per window |
+| `RESUME_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate-limit window in seconds |
+
+Production startup rejects the default development API key.
+
+## Run with Docker
+
+Docker Compose starts the API with a read-only root filesystem, no Linux capabilities, and a non-root user.
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-The container runs as a non-root user. Compose drops Linux capabilities and mounts the root filesystem read-only.
+Replace `RESUME_API_KEYS` in `.env` before setting `RESUME_ENVIRONMENT=production`.
 
-## Quality gates
+## Verify the project
+
+The local quality command matches the checks in GitHub Actions:
 
 ```bash
 make check
 ```
 
-This runs Ruff lint/format checks, strict MyPy analysis, and pytest with coverage. GitHub Actions repeats the checks and builds the production container for every pull request.
+The command runs:
 
-## Repository map
+- Ruff lint and formatting checks
+- Strict MyPy analysis
+- Pytest unit and API integration tests
+- Coverage reporting with an 80% minimum in continuous integration
+
+The CI workflow also builds the production Docker image.
+
+## Repository structure
+
+The source tree separates transport, orchestration, domain models, agents, providers, security, and telemetry.
 
 ```text
 src/resume_agent/
-├── agents/          # One module per workflow agent
-├── api.py           # Routes, middleware, errors, operations endpoints
+├── agents/          # Isolated workflow responsibilities
+├── providers/       # Ollama and future model adapters
+├── api.py           # Routes, middleware, and error handling
 ├── config.py        # Validated environment configuration
-├── models.py        # Strict public and internal schemas
-├── orchestrator.py  # Pipeline sequencing, provider fallback, telemetry
-├── providers/       # Free local Ollama provider boundary
-└── security.py      # Authentication and rate limiting
-tests/               # API, security, and agent behavior tests
-docs/                # Architecture and threat model
-examples/            # Ready-to-run request payload
+├── models.py        # Request, response, and agent schemas
+├── orchestrator.py  # Pipeline sequencing and provider fallback
+├── security.py      # Authentication and rate limiting
+└── metrics.py       # Prometheus instruments
+tests/               # Unit and API integration tests
+docs/                # Architecture and security decisions
+examples/            # Sample generation request
 ```
 
-## Production evolution
+## Security and privacy
 
-The deterministic provider keeps demos and CI fast, reproducible, private, and free. The Ollama adapter adds real local LLM generation with timeouts and JSON Schema output. Additional providers can implement the same `ResumeGenerationProvider` contract while retaining the validated domain models.
+Resume data contains personally identifiable information (PII). The service does not log request bodies, and local Ollama generation keeps candidate data on the host. A hosted deployment still requires transport encryption, secret management, access controls, retention limits, and applicable privacy review.
 
-Before a multi-instance deployment, replace the in-memory rate limiter with Redis or API-gateway enforcement and replace shared API keys with OAuth2/OIDC.
+The generator must not invent employment, credentials, skills, or metrics. Missing ATS keywords are recommendations, not facts to insert. Human review remains required before using generated content.
 
-## Responsible use
+## Current limitations
 
-The system must not invent credentials, employment, or metrics. Missing ATS keywords are recommendations, not facts to insert. Candidate PII requires access control, retention limits, encryption, and applicable privacy-law review.
+The reference implementation makes several deliberate tradeoffs:
+
+- The in-memory rate limiter applies to one process and must be replaced for multiple replicas
+- API keys suit a capstone deployment, while multi-tenant production requires OAuth 2.0 or OpenID Connect
+- Local model quality and latency depend on the selected model and available hardware
+- The API returns structured resume content rather than a rendered PDF or DOCX file
+
+## Contribute
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), create a focused branch, and run `make check` before opening a pull request. Security reports containing exploit details or candidate data should go to the repository owner privately.
 
 ## License
 
-MIT
-
+This project is available under the [MIT License](LICENSE).
